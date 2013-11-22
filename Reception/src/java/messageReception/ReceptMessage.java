@@ -1,17 +1,17 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package messageReception;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import javax.annotation.Resource;
 import javax.ejb.EJBException;
 import javax.jws.WebService;
 import javax.jws.WebMethod;
 import javax.jws.WebParam;
 import javax.ejb.Stateless;
+import javax.ejb.TransactionAttribute;
+import javax.ejb.TransactionAttributeType;
 import javax.jms.Connection;
 import javax.jms.JMSException;
 import javax.jms.MessageProducer;
@@ -19,8 +19,10 @@ import javax.jms.ObjectMessage;
 import javax.jms.Queue;
 import javax.jms.QueueConnectionFactory;
 import javax.jms.Session;
+import triplet.Informations;
 
 
+    
 @WebService(serviceName = "ReceptMessage")
 @Stateless()
 public class ReceptMessage {
@@ -33,22 +35,37 @@ public class ReceptMessage {
 
     private Connection cnx;
     
-    
-    
-    @WebMethod(operationName = "TreatmentOperation")
-    public boolean processTreatment(@WebParam(name = "fileName") String fileName, @WebParam(name = "message") String message) {
-        
-        if(/*Message déchiffré*/){
+    @PostConstruct
+    protected void init(){
+        try {
+            //connexion au provider JMS établie
+                 cnx = factory.createConnection();//connexion au JMS provider établie
+        } catch (JMSException ex) {
+            Logger.getLogger(ReceptMessage.class.getName()).log(Level.SEVERE, null, ex);
+            throw new EJBException();
+        }
+    }
 
-            VerificationMessage(fileName, message);
-            return true;
-
-        } else {
-            return false;
+    //fermeture de la connexion dans une méthode déclenchée lorsque l'instance du session bean est détruite
+    @PreDestroy
+    protected void clear(){
+        try {
+            cnx.close(); //il faut fermer la connexion
+        } catch (JMSException ex) {
+            Logger.getLogger(ReceptMessage.class.getName()).log(Level.SEVERE, null, ex);
+            throw new EJBException();
         }
     }
     
-    private void VerificationMessage(String fileName, String message){
+    @WebMethod(operationName = "TreatmentOperation")
+    @TransactionAttribute(TransactionAttributeType.REQUIRES_NEW)
+    public boolean processTreatment(@WebParam(name = "fileName") String fileName, @WebParam(name = "key") String key, @WebParam(name = "message") String message) {
+        
+        sendMessage(fileName, key, message);
+        return true;
+    }
+
+    private void sendMessage(String fileName, String key, String message){
         
         try {
 
@@ -58,16 +75,15 @@ public class ReceptMessage {
             MessageProducer producer = session.createProducer(queue);
 
             //instanciation de l'entité
-            Payment payment = new Payment(ccNumber, amount);
+            Informations information = new Informations(fileName, key, message);
 
             //Création d'un message de type objet
-            ObjectMessage obj = session.createObjectMessage(payment);
+            ObjectMessage obj = session.createObjectMessage(information);
             producer.send(obj); //préparation de l'envoi du message
 
         } catch (JMSException ex) {
-            Logger.getLogger(BankingService.class.getName()).log(Level.SEVERE, null, ex);
+            Logger.getLogger(ReceptMessage.class.getName()).log(Level.SEVERE, null, ex);
             throw new EJBException();
         }
-
     }
 }
